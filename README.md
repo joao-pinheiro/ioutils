@@ -8,10 +8,9 @@ Example:
 package png
 
 import (
-	"bytes"
 	"io"
 	"encoding/binary"
-    "github.com/joao-pinheiro/ioutils"
+	"github.com/joao-pinheiro/ioutils"
 )
 
 type PNGSignature [8]byte
@@ -30,7 +29,7 @@ type IHDR struct {
 	Filter      uint8
 	Interlace   uint8
 }
-	
+
 type PNGHeader struct {
 	PNGSignature
 	Chunk
@@ -41,9 +40,9 @@ type PNGHeader struct {
 func ReadPNGHeader(file io.Reader) (*PNGHeader, error) {
 	header := &PNGHeader{}
 	if err := ReadStruct(file, header, binary.BigEndian); err != nil {
-       return nil, err
-    }
-    return header, nil
+		return nil, err
+	}
+	return header, nil
 }
 ```
   
