@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"reflect"
 )
 
@@ -25,7 +24,7 @@ func ReadStruct(reader io.Reader, dest interface{}, order binary.ByteOrder) erro
 	} else {
 		return fmt.Errorf("dest must be a pointer")
 	}
-	log.Println(v.Type().Name())
+
 	switch v.Kind() {
 	case reflect.Struct:
 		for i := 0; i < v.NumField(); i++ {
@@ -99,9 +98,13 @@ func ReadArray(reader io.Reader, dest interface{}, order binary.ByteOrder) error
 	}
 	kind := field.Kind()
 	if kind == reflect.Slice || kind == reflect.Array {
-
+		var type_len int
 		ftype := field.Type()
-		type_len := ftype.Len()
+		if kind == reflect.Slice {
+			type_len = field.Len()
+		} else {
+			type_len = ftype.Len()
+		}
 
 		for idx := 0; idx < type_len; idx++ {
 			cell := field.Index(idx)

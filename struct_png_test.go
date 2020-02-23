@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/binary"
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -16,12 +17,15 @@ const (
 	chunkIHDR = "IHDR"
 	chunkPLTE = "PLTE"
 	chunktRNS = "tRNS"
+	chunkBKGD = "bKGD"
+	chunkTIME = "tIME"
+	chunkPHYS = "pHYs"
 	chunkIDAT = "IDAT"
 	chunkIEND = "IEND"
 	sizeIHDR  = 13
 )
 
-type PNGHeader [8]byte
+type PNGSignature [8]byte
 
 type Chunk struct {
 	Size uint32
@@ -47,17 +51,47 @@ type ChunkIHDR struct {
 	CRC      uint32
 }
 
+type ChunkBKGD struct {
+	R, G, B uint16
+}
+
+type ChunkPHYS struct {
+	PPU_X uint32
+	PPU_Y uint32
+	Unit  uint8
+}
+
+type ChunkTIME struct {
+	Year   uint16
+	Month  uint8
+	Day    uint8
+	Hour   uint8
+	Minute uint8
+	Second uint8
+}
+
 /**
  * Initial PNG struct with anonymous structs
  */
-type PNG struct {
-	PNGHeader
+type PNGHeader struct {
+	PNGSignature
 	Chunk
 	IHDR
 	CRC uint32
 }
 
-var validPNGHeader = PNGHeader{0x89, 0x50, 0x4e, 0x47, 0xd, 0xa, 0x1a, 0xa}
+/**
+ * Full file struct
+ */
+type PNGFile struct {
+	Header *PNGHeader
+	BKG    *ChunkBKGD
+	PHYS   *ChunkPHYS
+	TIME   *ChunkTIME
+	IDAT   []byte
+}
+
+var validPNGHeader = PNGSignature{0x89, 0x50, 0x4e, 0x47, 0xd, 0xa, 0x1a, 0xa}
 
 /**
  * Reads PNG header from base64 image with separate structs
@@ -67,7 +101,7 @@ func TestReadPNGHeader(t *testing.T) {
 	assert.Nil(t, err)
 
 	// Read header
-	header := &PNGHeader{}
+	header := &PNGSignature{}
 	err = ReadStruct(file, header, binary.BigEndian)
 	assert.Nil(t, err)
 	assert.Equal(t, &validPNGHeader, header)
@@ -94,12 +128,12 @@ func TestReadPNGHeader_Embedded(t *testing.T) {
 	assert.Nil(t, err)
 
 	// Read PNG header with IHDR
-	header := &PNG{}
+	header := &PNGHeader{}
 	err = ReadStruct(file, header, binary.BigEndian)
 	assert.Nil(t, err)
 	if err == nil {
 		// png signature
-		assert.Equal(t, validPNGHeader, header.PNGHeader)
+		assert.Equal(t, validPNGHeader, header.PNGSignature)
 		// ihdr
 		assert.Equal(t, chunkIHDR, string(header.Type[:]))
 		assert.Equal(t, uint32(13), header.Size)
@@ -109,6 +143,108 @@ func TestReadPNGHeader_Embedded(t *testing.T) {
 	}
 }
 
+/**
+ * Reads Full PNG data into a PNGFile struct
+ */
+func TestReadFullPNG(t *testing.T) {
+	file, err := fromBase64(png1)
+	assert.Nil(t, err)
+
+	// Only initialize header struct, most of other parts are optional
+	pngfile := &PNGFile{
+		Header: &PNGHeader{},
+		BKG:    nil,
+		PHYS:   nil,
+		TIME:   nil,
+		IDAT:   nil,
+	}
+	err = ReadStruct(file, pngfile.Header, binary.BigEndian)
+	assert.Nil(t, err)
+
+	// Note: not performing actual PNG header validation for sake of simplicity
+	if err == nil {
+		// Iterate chunks, both known and unknown
+		run := true
+		for run == true {
+
+			chunk := &Chunk{}
+			err = ReadStruct(file, chunk, binary.BigEndian)
+			assert.Nil(t, err)
+			if err != nil {
+				break
+			}
+			switch (string(chunk.Type[:])) {
+			case chunkPLTE:
+				fmt.Println("PLTE")
+			case chunktRNS:
+				fmt.Println("RNS")
+			case chunkBKGD:
+				// Read background chunk
+				pngfile.BKG = &ChunkBKGD{}
+				assert.Nil(t, ReadStruct(file, pngfile.BKG, binary.BigEndian))
+				// Read crc
+				_, err = ReadUint(file, 4, binary.BigEndian)
+				assert.Nil(t, err)
+
+			case chunkPHYS:
+				// Density chunk
+				pngfile.PHYS = &ChunkPHYS{}
+				assert.Nil(t, ReadStruct(file, pngfile.PHYS, binary.BigEndian))
+				// Read crc
+				_, err = ReadUint(file, 4, binary.BigEndian)
+				assert.Nil(t, err)
+
+			case chunkTIME:
+				// Time chunk
+				pngfile.TIME = &ChunkTIME{}
+				assert.Nil(t, ReadStruct(file, pngfile.TIME, binary.BigEndian))
+				// Read crc
+				_, err = ReadUint(file, 4, binary.BigEndian)
+				assert.Nil(t, err)
+
+			case chunkIDAT:
+				// Compressed data
+				// multiple idat chunks can exist in a single file
+				if chunk.Size > 0 {
+					buf := make([]byte, chunk.Size)
+					assert.Nil(t, ReadStruct(file, &buf, binary.BigEndian))
+
+					if pngfile.IDAT == nil {
+						pngfile.IDAT = buf
+					} else {
+						// append if chunks already read
+						pngfile.IDAT = append(pngfile.IDAT, buf...)
+					}
+				}
+				// Read crc
+				_, err = ReadUint(file, 4, binary.BigEndian)
+				assert.Nil(t, err)
+				if err != nil {
+					run = false
+				}
+
+			case chunkIEND:
+				run = false
+
+			default:
+				// Chunk with no support, just ignore
+				buf := make([]byte, chunk.Size)
+				err = ReadStruct(file, &buf, binary.BigEndian)
+				assert.Nil(t, err)
+				if err != nil {
+					run = false
+				}
+				// Read crc
+				_, err = ReadUint(file, 4, binary.BigEndian)
+				assert.Nil(t, err)
+				if err != nil {
+					run = false
+				}
+
+			}
+		}
+	}
+}
 
 func fromBase64(b64 string) (*bytes.Buffer, error) {
 	data, err := base64.StdEncoding.DecodeString(b64)
