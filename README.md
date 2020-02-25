@@ -1,7 +1,17 @@
 ioutils - "C"-style binary read & write with structs
 ====================================================
 
-Golang package that provides reading & writing of structs from/to binary files, similar to C and other languages.
+Golang package that provides reading & writing of structs from/to binary files, similar to C and other languages. This is
+achieved by reflection, and can read streams that conform to io.Reader interface.
+
+Supported data types:
+- uint8/16/32/64 (littleEndian and bigEndian)
+- int8/16/32/64 (littleEndian and bigEndian)
+- byte
+- slices
+- arrays
+- nested structs
+
 
 Example:
 ```go
@@ -45,4 +55,4 @@ func ReadPNGHeader(file io.Reader) (*PNGHeader, error) {
 	return header, nil
 }
 ```
-  
+ 
