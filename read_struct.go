@@ -33,7 +33,7 @@ func ReadStruct(reader io.Reader, dest interface{}, order binary.ByteOrder) erro
 			size := int(ftype.Size())
 
 			if !field.CanSet() {
-				return fmt.Errorf("field %s is not settable", ftype.Name())
+				return fmt.Errorf("field %s is not settable", v.Type().Field(i).Name)
 			}
 
 			if field.CanInterface() {

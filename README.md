@@ -56,3 +56,17 @@ func ReadPNGHeader(file io.Reader) (*PNGHeader, error) {
 }
 ```
  
+ 
+ #todo:
+ type yy struct {
+   A string
+   B string
+   C string
+ }
+ type xxx struct {
+   Abc [10]yyy
+  } 
+  
+  # todo
+  // check read-write with 64 bit unsigned values
+  
